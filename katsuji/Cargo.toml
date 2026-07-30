@@ -1,0 +1,14 @@
+[package]
+name = "katsuji"
+description = "Katsuji (活字) — movable type for the terminal: a typed textscape (ink, attributes, crisp glyphs, controls) so an emitted line is COMPOSED from typed pieces, never concatenated from escape strings"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]

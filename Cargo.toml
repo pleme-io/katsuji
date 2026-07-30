@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["katsuji"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["pleme-io"]
+license = "MIT"
+repository = "https://github.com/pleme-io/katsuji"
+homepage = "https://github.com/pleme-io/katsuji"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
