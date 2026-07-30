@@ -1,0 +1,26 @@
+# AUTO-RELEASE — publishes katsuji to crates.io on merge to main.
+#
+# Points at the per-language Rust *workspace* reusable DIRECTLY rather than the
+# polymorphic auto-release.yml@main shim, which startup_failures (org CLAUDE.md,
+# known issue 2026-06-26). katsuji is a single-member workspace today; the
+# workspace reusable is still the right one, because the member inherits
+# `version.workspace` from the root and rust-auto-release bumps that.
+#
+# Why katsuji needs to publish at all: it is a portable emission library, not a
+# mado module. mado consumes it today by git dep, but banken, tear, izumi and
+# any colour CLI are the point of it existing. A consumer stuck on a git dep
+# cannot itself publish — a `git =` dependency in a shipped table is exactly
+# what cargo-publish-crate's preflight rejects as structurally unpublishable.
+#
+# The name is free: crates.io returns 404 for `katsuji` (checked 2026-07-30), so
+# this cannot hit the 403 not-an-owner arm that stalled mado and lava.
+name: auto-release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: pleme-io/substrate/.github/workflows/rust-auto-release.yml@main
+    secrets: inherit
