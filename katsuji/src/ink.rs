@@ -19,7 +19,8 @@
 //! the concrete value. Katsuji emits the INDEX and lets the theme decide,
 //! which is precisely why a retune needs no change here.
 
-use anstyle::AnsiColor;
+use kazari::anstyle::AnsiColor;
+use kazari::{Role, Theme};
 
 /// A terminal colour, addressed by its semantic slot.
 ///
@@ -74,65 +75,39 @@ impl Ink {
             Self::BrightWhite => Some(AnsiColor::BrightWhite),
         }
     }
+
+    const fn from_ansi(slot: AnsiColor) -> Self {
+        match slot {
+            AnsiColor::Black => Self::Black,
+            AnsiColor::Red => Self::Red,
+            AnsiColor::Green => Self::Green,
+            AnsiColor::Yellow => Self::Yellow,
+            AnsiColor::Blue => Self::Blue,
+            AnsiColor::Magenta => Self::Magenta,
+            AnsiColor::Cyan => Self::Cyan,
+            AnsiColor::White => Self::White,
+            AnsiColor::BrightBlack => Self::BrightBlack,
+            AnsiColor::BrightRed => Self::BrightRed,
+            AnsiColor::BrightGreen => Self::BrightGreen,
+            AnsiColor::BrightYellow => Self::BrightYellow,
+            AnsiColor::BrightBlue => Self::BrightBlue,
+            AnsiColor::BrightMagenta => Self::BrightMagenta,
+            AnsiColor::BrightCyan => Self::BrightCyan,
+            AnsiColor::BrightWhite => Self::BrightWhite,
+        }
+    }
+}
+
+impl From<Role> for Ink {
+    fn from(role: Role) -> Self {
+        Self::from_ansi(Theme::default().ansi16(role))
+    }
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
-    use kazari::Role;
-
-    pub(crate) const fn from_ansi(slot: AnsiColor) -> Ink {
-        match slot {
-            AnsiColor::Black => Ink::Black,
-            AnsiColor::Red => Ink::Red,
-            AnsiColor::Green => Ink::Green,
-            AnsiColor::Yellow => Ink::Yellow,
-            AnsiColor::Blue => Ink::Blue,
-            AnsiColor::Magenta => Ink::Magenta,
-            AnsiColor::Cyan => Ink::Cyan,
-            AnsiColor::White => Ink::White,
-            AnsiColor::BrightBlack => Ink::BrightBlack,
-            AnsiColor::BrightRed => Ink::BrightRed,
-            AnsiColor::BrightGreen => Ink::BrightGreen,
-            AnsiColor::BrightYellow => Ink::BrightYellow,
-            AnsiColor::BrightBlue => Ink::BrightBlue,
-            AnsiColor::BrightMagenta => Ink::BrightMagenta,
-            AnsiColor::BrightCyan => Ink::BrightCyan,
-            AnsiColor::BrightWhite => Ink::BrightWhite,
-        }
-    }
-
-    pub(crate) fn every_role() -> [Role; 11] {
-        let roles = [
-            Role::Primary,
-            Role::Text,
-            Role::TextMuted,
-            Role::TextDim,
-            Role::Border,
-            Role::Error,
-            Role::Warn,
-            Role::Pending,
-            Role::Ok,
-            Role::Info,
-            Role::Ident,
-        ];
-        for role in roles {
-            match role {
-                Role::Primary
-                | Role::Text
-                | Role::TextMuted
-                | Role::TextDim
-                | Role::Border
-                | Role::Error
-                | Role::Warn
-                | Role::Pending
-                | Role::Ok
-                | Role::Info
-                | Role::Ident => {}
-            }
-        }
-        roles
-    }
+    use kazari::anstyle;
 
     fn fg(ink: Ink) -> String {
         anstyle::Style::new().fg_color(ink.ansi().map(anstyle::Color::Ansi)).render().to_string()
@@ -140,6 +115,17 @@ pub(crate) mod tests {
 
     fn bg(ink: Ink) -> String {
         anstyle::Style::new().bg_color(ink.ansi().map(anstyle::Color::Ansi)).render().to_string()
+    }
+
+    #[test]
+    fn every_role_binds_to_the_slot_kazari_names() {
+        for role in Role::ALL {
+            let ink = Ink::from(role);
+            assert_eq!(ink.ansi(), Some(Theme::default().ansi16(role)), "{role:?}");
+        }
+        assert_eq!(Ink::from(Role::Primary), Ink::Cyan);
+        assert_eq!(Ink::from(Role::Error), Ink::Red);
+        assert_eq!(Ink::from(Role::Ok), Ink::Green);
     }
 
     #[test]
@@ -173,7 +159,7 @@ pub(crate) mod tests {
             Ink::BrightWhite,
         ] {
             let ansi = slot.ansi().expect("a named slot has an ANSI colour");
-            assert_eq!(from_ansi(ansi), slot);
+            assert_eq!(Ink::from_ansi(ansi), slot);
         }
     }
 

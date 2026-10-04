@@ -14,8 +14,8 @@
 //! never sees.
 //!
 //! **4 — a raw `\x1b` from a consumer.** No escape is spelled here at
-//! all: every byte comes from `anstyle`, the serializer kazari wraps, so
-//! the fleet has one emitter. A consumer composes `Piece`s; it is never
+//! all: every byte comes from kazari's `StyleAtom`, so the fleet has one
+//! emitter. A consumer composes `Piece`s; it is never
 //! handed an escape to concatenate. `format!()` of an escape is what ★★
 //! TYPED EMISSION bans, and this is the typed surface that makes it
 //! unnecessary.
@@ -31,13 +31,14 @@
 //! deliberately, because layout belongs to the consumer (a banner, a
 //! status bar, a TUI widget) while typed emission belongs here.
 
-use std::fmt::Write;
-
-use anstyle::{Color, Style};
-use kazari::{Capability, Stream};
+use kazari::anstyle::{Color, Effects};
+use kazari::style::StyleAtom;
+use kazari::{Capability, ColorLevel, Stream};
 
 use crate::ink::Ink;
 use crate::sgr::Attr;
+
+const ANSI16: Capability = Capability::fixed(ColorLevel::Ansi16, 80, true);
 
 /// A styled run of content.
 ///
@@ -125,11 +126,13 @@ impl Piece {
         }
     }
 
-    fn style(&self) -> Style {
-        let base = Style::new()
-            .fg_color(self.ink.ansi().map(Color::Ansi))
-            .bg_color(self.on.and_then(Ink::ansi).map(Color::Ansi));
-        self.attrs.iter().fold(base, |style, a| style | a.effect())
+    fn atom(&self, caps: &Capability) -> StyleAtom {
+        StyleAtom::styled(
+            self.ink.ansi().map(Color::Ansi),
+            self.on.and_then(Ink::ansi).map(Color::Ansi),
+            self.attrs.iter().fold(Effects::new(), |e, a| e | a.effect()),
+            caps,
+        )
     }
 
     fn write_content(&self, out: &mut String) {
@@ -143,11 +146,10 @@ impl Piece {
         }
     }
 
-    fn write_into(&self, out: &mut String) {
-        let style = self.style();
-        let _ = write!(out, "{}", style.render());
-        self.write_content(out);
-        let _ = write!(out, "{}", style.render_reset());
+    fn write_into(&self, out: &mut String, caps: &Capability) {
+        let mut content = String::new();
+        self.write_content(&mut content);
+        out.push_str(&self.atom(caps).paint(&content));
     }
 }
 
@@ -188,11 +190,7 @@ impl Line {
     /// Render to a terminal-ready string.
     #[must_use]
     pub fn render(&self) -> String {
-        let mut out = String::new();
-        for p in &self.pieces {
-            p.write_into(&mut out);
-        }
-        out
+        self.render_at(&ANSI16)
     }
 
     /// Render with every escape omitted — the plain-text projection.
@@ -211,11 +209,11 @@ impl Line {
 
     #[must_use]
     pub fn render_at(&self, caps: &Capability) -> String {
-        if caps.level.is_colored() {
-            self.render()
-        } else {
-            self.plain()
+        let mut out = String::new();
+        for p in &self.pieces {
+            p.write_into(&mut out, caps);
         }
+        out
     }
 
     #[must_use]
@@ -228,8 +226,7 @@ impl Line {
 mod tests {
     use super::*;
     use crate::glyph::Crisp;
-    use kazari::style::StyleAtom;
-    use kazari::{ColorLevel, Theme};
+    use kazari::{Role, Theme};
 
     /// The seal for Gate-0 state 3: every emitted open has its close.
     #[test]
@@ -324,12 +321,11 @@ mod tests {
     }
 
     #[test]
-    fn a_slot_renders_byte_for_byte_as_kazari_paints_it() {
+    fn a_role_ink_renders_byte_for_byte_as_kazari_paints_the_role() {
         let caps = Capability::fixed(ColorLevel::Ansi16, 80, true);
-        for role in crate::ink::tests::every_role() {
+        for role in Role::ALL {
             for (bold, dim) in [(false, false), (true, false), (false, true)] {
-                let slot = Theme::default().color(role).to_ansi16();
-                let mut piece = Piece::text("kazari").ink(crate::ink::tests::from_ansi(slot));
+                let mut piece = Piece::text("kazari").ink(Ink::from(role));
                 if bold {
                     piece = piece.attr(Attr::Bold);
                 }

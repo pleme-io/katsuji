@@ -8,7 +8,7 @@
 //! different result per terminal, which is the opposite of what a typed
 //! emission surface is for.
 
-use anstyle::Effects;
+use kazari::anstyle::Effects;
 
 /// A character attribute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -56,6 +56,7 @@ impl Attr {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kazari::anstyle;
 
     fn sgr(a: Attr) -> String {
         anstyle::Style::new().effects(a.effect()).render().to_string()

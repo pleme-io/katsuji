@@ -38,7 +38,6 @@ dependencies = [
 name = "katsuji"
 version = "0.1.1"
 dependencies = [
- "anstyle",
  "pleme-io-kazari",
 ]
 
@@ -56,9 +55,9 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 
 [[package]]
 name = "pleme-io-kazari"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6873aa742e82c087d42adf1e2f9439f2fa72d5ec00dea64b2196afcfb5e52acf"
+checksum = "3472350370edf119defaa95319faf31bccc54c5fa99e39f2360ebc92aa890e5e"
 dependencies = [
  "anstyle",
  "irodori",
