@@ -12,3 +12,5 @@ homepage.workspace = true
 workspace = true
 
 [dependencies]
+anstyle = "1"
+kazari = { version = "0.2", package = "pleme-io-kazari" }

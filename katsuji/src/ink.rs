@@ -19,6 +19,8 @@
 //! the concrete value. Katsuji emits the INDEX and lets the theme decide,
 //! which is precisely why a retune needs no change here.
 
+use anstyle::AnsiColor;
+
 /// A terminal colour, addressed by its semantic slot.
 ///
 /// The variants are the ANSI-16 roles plus `Default`. Naming them by ROLE
@@ -51,60 +53,128 @@ pub enum Ink {
 }
 
 impl Ink {
-    /// The SGR parameter for this ink in the given position.
-    ///
-    /// Private to the crate: a parameter number is an implementation
-    /// detail of rendering, and exposing it would hand a caller the
-    /// pieces to hand-assemble an escape — the thing this crate exists to
-    /// make unnecessary.
-    pub(crate) const fn sgr_param(self, position: Position) -> u8 {
-        let base = match position {
-            Position::Foreground => 30,
-            Position::Background => 40,
-        };
+    pub(crate) const fn ansi(self) -> Option<AnsiColor> {
         match self {
-            Self::Default => base + 9,
-            Self::Black => base,
-            Self::Red => base + 1,
-            Self::Green => base + 2,
-            Self::Yellow => base + 3,
-            Self::Blue => base + 4,
-            Self::Magenta => base + 5,
-            Self::Cyan => base + 6,
-            Self::White => base + 7,
-            // The bright range sits 60 above its normal counterpart in
-            // both positions (90-97 / 100-107).
-            Self::BrightBlack => base + 60,
-            Self::BrightRed => base + 61,
-            Self::BrightGreen => base + 62,
-            Self::BrightYellow => base + 63,
-            Self::BrightBlue => base + 64,
-            Self::BrightMagenta => base + 65,
-            Self::BrightCyan => base + 66,
-            Self::BrightWhite => base + 67,
+            Self::Default => None,
+            Self::Black => Some(AnsiColor::Black),
+            Self::Red => Some(AnsiColor::Red),
+            Self::Green => Some(AnsiColor::Green),
+            Self::Yellow => Some(AnsiColor::Yellow),
+            Self::Blue => Some(AnsiColor::Blue),
+            Self::Magenta => Some(AnsiColor::Magenta),
+            Self::Cyan => Some(AnsiColor::Cyan),
+            Self::White => Some(AnsiColor::White),
+            Self::BrightBlack => Some(AnsiColor::BrightBlack),
+            Self::BrightRed => Some(AnsiColor::BrightRed),
+            Self::BrightGreen => Some(AnsiColor::BrightGreen),
+            Self::BrightYellow => Some(AnsiColor::BrightYellow),
+            Self::BrightBlue => Some(AnsiColor::BrightBlue),
+            Self::BrightMagenta => Some(AnsiColor::BrightMagenta),
+            Self::BrightCyan => Some(AnsiColor::BrightCyan),
+            Self::BrightWhite => Some(AnsiColor::BrightWhite),
         }
     }
 }
 
-/// Whether an ink paints the glyph or the cell behind it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Position {
-    Foreground,
-    Background,
-}
-
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use kazari::Role;
+
+    pub(crate) const fn from_ansi(slot: AnsiColor) -> Ink {
+        match slot {
+            AnsiColor::Black => Ink::Black,
+            AnsiColor::Red => Ink::Red,
+            AnsiColor::Green => Ink::Green,
+            AnsiColor::Yellow => Ink::Yellow,
+            AnsiColor::Blue => Ink::Blue,
+            AnsiColor::Magenta => Ink::Magenta,
+            AnsiColor::Cyan => Ink::Cyan,
+            AnsiColor::White => Ink::White,
+            AnsiColor::BrightBlack => Ink::BrightBlack,
+            AnsiColor::BrightRed => Ink::BrightRed,
+            AnsiColor::BrightGreen => Ink::BrightGreen,
+            AnsiColor::BrightYellow => Ink::BrightYellow,
+            AnsiColor::BrightBlue => Ink::BrightBlue,
+            AnsiColor::BrightMagenta => Ink::BrightMagenta,
+            AnsiColor::BrightCyan => Ink::BrightCyan,
+            AnsiColor::BrightWhite => Ink::BrightWhite,
+        }
+    }
+
+    pub(crate) fn every_role() -> [Role; 11] {
+        let roles = [
+            Role::Primary,
+            Role::Text,
+            Role::TextMuted,
+            Role::TextDim,
+            Role::Border,
+            Role::Error,
+            Role::Warn,
+            Role::Pending,
+            Role::Ok,
+            Role::Info,
+            Role::Ident,
+        ];
+        for role in roles {
+            match role {
+                Role::Primary
+                | Role::Text
+                | Role::TextMuted
+                | Role::TextDim
+                | Role::Border
+                | Role::Error
+                | Role::Warn
+                | Role::Pending
+                | Role::Ok
+                | Role::Info
+                | Role::Ident => {}
+            }
+        }
+        roles
+    }
+
+    fn fg(ink: Ink) -> String {
+        anstyle::Style::new().fg_color(ink.ansi().map(anstyle::Color::Ansi)).render().to_string()
+    }
+
+    fn bg(ink: Ink) -> String {
+        anstyle::Style::new().bg_color(ink.ansi().map(anstyle::Color::Ansi)).render().to_string()
+    }
 
     #[test]
     fn slots_map_to_their_ansi_parameters() {
-        assert_eq!(Ink::Cyan.sgr_param(Position::Foreground), 36);
-        assert_eq!(Ink::Blue.sgr_param(Position::Foreground), 34);
-        assert_eq!(Ink::Default.sgr_param(Position::Foreground), 39);
-        assert_eq!(Ink::Cyan.sgr_param(Position::Background), 46);
-        assert_eq!(Ink::BrightCyan.sgr_param(Position::Foreground), 96);
-        assert_eq!(Ink::BrightWhite.sgr_param(Position::Background), 107);
+        assert_eq!(fg(Ink::Cyan), "\u{1b}[36m");
+        assert_eq!(fg(Ink::Blue), "\u{1b}[34m");
+        assert_eq!(fg(Ink::Default), "");
+        assert_eq!(bg(Ink::Cyan), "\u{1b}[46m");
+        assert_eq!(fg(Ink::BrightCyan), "\u{1b}[96m");
+        assert_eq!(bg(Ink::BrightWhite), "\u{1b}[107m");
+    }
+
+    #[test]
+    fn every_slot_round_trips_through_its_ansi_colour() {
+        for slot in [
+            Ink::Black,
+            Ink::Red,
+            Ink::Green,
+            Ink::Yellow,
+            Ink::Blue,
+            Ink::Magenta,
+            Ink::Cyan,
+            Ink::White,
+            Ink::BrightBlack,
+            Ink::BrightRed,
+            Ink::BrightGreen,
+            Ink::BrightYellow,
+            Ink::BrightBlue,
+            Ink::BrightMagenta,
+            Ink::BrightCyan,
+            Ink::BrightWhite,
+        ] {
+            let ansi = slot.ansi().expect("a named slot has an ANSI colour");
+            assert_eq!(from_ansi(ansi), slot);
+        }
     }
 
     /// The seal for Gate-0 state 2, asserted as a property of the API

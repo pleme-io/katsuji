@@ -43,7 +43,7 @@
 //! | 1 | a glyph with no font geometry (tofu) | [`Crisp`] has no variant for `╭` — the 139 no-geometry chars are unnameable | truly-unrepresentable |
 //! | 2 | a hardcoded hex colour | [`Ink`] is a fieldless enum of semantic slots; no `from_hex`, no `Rgb` | truly-unrepresentable |
 //! | 3 | unbalanced SGR (bold bleeds forever) | style travels WITH content; open and close are emitted by one line of code | truly-unrepresentable |
-//! | 4 | a raw `\x1b` from a consumer | escapes are built in exactly one private fn; consumers never see one | parse-time-rejected |
+//! | 4 | a raw `\x1b` from a consumer | no escape is spelled here: bytes come from `anstyle`, the serializer kazari wraps, in one private fn; consumers never see one | parse-time-rejected |
 //! | 5 | a wrong width claim | [`Line::width`] is COMPUTED, never asserted | eval-caught — see below |
 //!
 //! ### Tier honesty
@@ -87,6 +87,7 @@ pub use compose::{Line, Piece};
 pub use glyph::Crisp;
 pub use ink::Ink;
 pub use sgr::Attr;
+pub use kazari::{Capability, ColorLevel, Stream};
 
 #[cfg(test)]
 mod contract {

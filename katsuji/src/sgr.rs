@@ -8,6 +8,8 @@
 //! different result per terminal, which is the opposite of what a typed
 //! emission surface is for.
 
+use anstyle::Effects;
+
 /// A character attribute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Attr {
@@ -29,21 +31,14 @@ pub enum Attr {
 }
 
 impl Attr {
-    /// SGR 0 — clear everything. Not a variant: resetting is not an
-    /// attribute a caller applies to content, it is what
-    /// [`crate::compose`] emits to close a piece. Keeping it out of the
-    /// enum is what stops a caller "resetting" mid-line and re-creating
-    /// the unbalanced-style bug by hand.
-    pub(crate) const RESET: u8 = 0;
-
-    pub(crate) const fn sgr_param(self) -> u8 {
+    pub(crate) const fn effect(self) -> Effects {
         match self {
-            Self::Bold => 1,
-            Self::Dim => 2,
-            Self::Italic => 3,
-            Self::Underline => 4,
-            Self::Reverse => 7,
-            Self::Strike => 9,
+            Self::Bold => Effects::BOLD,
+            Self::Dim => Effects::DIMMED,
+            Self::Italic => Effects::ITALIC,
+            Self::Underline => Effects::UNDERLINE,
+            Self::Reverse => Effects::INVERT,
+            Self::Strike => Effects::STRIKETHROUGH,
         }
     }
 
@@ -62,19 +57,27 @@ impl Attr {
 mod tests {
     use super::*;
 
+    fn sgr(a: Attr) -> String {
+        anstyle::Style::new().effects(a.effect()).render().to_string()
+    }
+
     #[test]
     fn attributes_map_to_their_sgr_parameters() {
-        assert_eq!(Attr::Bold.sgr_param(), 1);
-        assert_eq!(Attr::Dim.sgr_param(), 2);
-        assert_eq!(Attr::Strike.sgr_param(), 9);
+        assert_eq!(sgr(Attr::Bold), "\u{1b}[1m");
+        assert_eq!(sgr(Attr::Dim), "\u{1b}[2m");
+        assert_eq!(sgr(Attr::Italic), "\u{1b}[3m");
+        assert_eq!(sgr(Attr::Underline), "\u{1b}[4m");
+        assert_eq!(sgr(Attr::Reverse), "\u{1b}[7m");
+        assert_eq!(sgr(Attr::Strike), "\u{1b}[9m");
     }
 
     #[test]
     fn no_attribute_collides_with_reset() {
         for a in Attr::ALL {
+            assert!(!a.effect().is_plain(), "{a:?} sets no effect");
             assert_ne!(
-                a.sgr_param(),
-                Attr::RESET,
+                sgr(a),
+                anstyle::Reset.render().to_string(),
                 "{a:?} would emit a reset — every following piece would lose its style"
             );
         }
@@ -82,7 +85,7 @@ mod tests {
 
     #[test]
     fn parameters_are_distinct() {
-        let mut seen: Vec<u8> = Attr::ALL.iter().map(|a| a.sgr_param()).collect();
+        let mut seen: Vec<String> = Attr::ALL.iter().map(|a| sgr(*a)).collect();
         seen.sort_unstable();
         let n = seen.len();
         seen.dedup();

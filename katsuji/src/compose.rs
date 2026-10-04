@@ -13,11 +13,16 @@
 //! open and the close are produced by one line of code that a caller
 //! never sees.
 //!
-//! **4 — a raw `\x1b` from a consumer.** Escapes are constructed in
-//! exactly one private function in this module. A consumer composes
-//! `Piece`s; it is never handed an escape to concatenate. `format!()` of
-//! an escape is what ★★ TYPED EMISSION bans, and this is the typed
-//! surface that makes it unnecessary.
+//! **4 — a raw `\x1b` from a consumer.** No escape is spelled here at
+//! all: every byte comes from `anstyle`, the serializer kazari wraps, so
+//! the fleet has one emitter. A consumer composes `Piece`s; it is never
+//! handed an escape to concatenate. `format!()` of an escape is what ★★
+//! TYPED EMISSION bans, and this is the typed surface that makes it
+//! unnecessary.
+//!
+//! The capability wall is kazari's: [`Line::render_at`] takes a
+//! `kazari::Capability`, and at `ColorLevel::None` it is the plain
+//! projection. [`Line::render`] stays the unconditional ANSI-16 form.
 //!
 //! # What this is NOT
 //!
@@ -26,7 +31,12 @@
 //! deliberately, because layout belongs to the consumer (a banner, a
 //! status bar, a TUI widget) while typed emission belongs here.
 
-use crate::ink::{Ink, Position};
+use std::fmt::Write;
+
+use anstyle::{Color, Style};
+use kazari::{Capability, Stream};
+
+use crate::ink::Ink;
 use crate::sgr::Attr;
 
 /// A styled run of content.
@@ -115,21 +125,14 @@ impl Piece {
         }
     }
 
-    fn write_into(&self, out: &mut String) {
-        let styled = self.ink != Ink::Default || self.on.is_some() || !self.attrs.is_empty();
-        if styled {
-            let mut params: Vec<u8> = Vec::with_capacity(self.attrs.len() + 2);
-            for a in &self.attrs {
-                params.push(a.sgr_param());
-            }
-            if self.ink != Ink::Default {
-                params.push(self.ink.sgr_param(Position::Foreground));
-            }
-            if let Some(bg) = self.on {
-                params.push(bg.sgr_param(Position::Background));
-            }
-            push_sgr(out, &params);
-        }
+    fn style(&self) -> Style {
+        let base = Style::new()
+            .fg_color(self.ink.ansi().map(Color::Ansi))
+            .bg_color(self.on.and_then(Ink::ansi).map(Color::Ansi));
+        self.attrs.iter().fold(base, |style, a| style | a.effect())
+    }
+
+    fn write_content(&self, out: &mut String) {
         match &self.content {
             Content::Text(s) => out.push_str(s),
             Content::Glyphs(g, n) => {
@@ -138,44 +141,14 @@ impl Piece {
                 }
             }
         }
-        if styled {
-            // The close is emitted HERE, unconditionally, by the same
-            // code that emitted the open. There is no path that writes
-            // one without the other.
-            push_sgr(out, &[Attr::RESET]);
-        }
     }
-}
 
-/// THE ONLY PLACE AN ESCAPE SEQUENCE IS CONSTRUCTED.
-///
-/// Private, and deliberately the single point of contact with the byte
-/// `0x1b`. Every rendered attribute in the fleet routes through these
-/// three lines, so the wire format is one thing to get right and one
-/// thing to change.
-fn push_sgr(out: &mut String, params: &[u8]) {
-    out.push_str("\u{1b}[");
-    for (i, p) in params.iter().enumerate() {
-        if i > 0 {
-            out.push(';');
-        }
-        // A u8 renders as at most 3 ASCII digits; no allocation needed.
-        let mut buf = [0u8; 3];
-        let mut n = *p;
-        let mut len = 0;
-        loop {
-            buf[len] = b'0' + (n % 10);
-            n /= 10;
-            len += 1;
-            if n == 0 {
-                break;
-            }
-        }
-        for k in (0..len).rev() {
-            out.push(buf[k] as char);
-        }
+    fn write_into(&self, out: &mut String) {
+        let style = self.style();
+        let _ = write!(out, "{}", style.render());
+        self.write_content(out);
+        let _ = write!(out, "{}", style.render_reset());
     }
-    out.push('m');
 }
 
 /// A composed line.
@@ -198,7 +171,7 @@ impl Line {
     }
 
     /// Append `n` spaces. Spacing is a first-class compositional act —
-    /// the MoonScript quality is largely whitespace — so it is a verb
+    /// the `MoonScript` quality is largely whitespace — so it is a verb
     /// rather than a `Piece::text("   ")` incantation.
     #[must_use]
     pub fn gap(self, n: usize) -> Self {
@@ -231,16 +204,23 @@ impl Line {
     pub fn plain(&self) -> String {
         let mut out = String::new();
         for p in &self.pieces {
-            match &p.content {
-                Content::Text(s) => out.push_str(s),
-                Content::Glyphs(g, n) => {
-                    for _ in 0..*n {
-                        out.push(g.ch());
-                    }
-                }
-            }
+            p.write_content(&mut out);
         }
         out
+    }
+
+    #[must_use]
+    pub fn render_at(&self, caps: &Capability) -> String {
+        if caps.level.is_colored() {
+            self.render()
+        } else {
+            self.plain()
+        }
+    }
+
+    #[must_use]
+    pub fn render_for(&self, stream: Stream) -> String {
+        self.render_at(&Capability::probe_stream(stream))
     }
 }
 
@@ -248,6 +228,8 @@ impl Line {
 mod tests {
     use super::*;
     use crate::glyph::Crisp;
+    use kazari::style::StyleAtom;
+    use kazari::{ColorLevel, Theme};
 
     /// The seal for Gate-0 state 3: every emitted open has its close.
     #[test]
@@ -305,10 +287,59 @@ mod tests {
     }
 
     #[test]
-    fn sgr_params_are_joined_correctly() {
+    fn sgr_params_are_emitted_in_order() {
         let s = Line::new()
             .piece(Piece::text("x").ink(Ink::Cyan).on(Ink::Black).attr(Attr::Bold))
             .render();
-        assert!(s.starts_with("\u{1b}[1;36;40m"), "unexpected SGR: {s:?}");
+        assert_eq!(s, "\u{1b}[1m\u{1b}[36m\u{1b}[40mx\u{1b}[0m", "unexpected SGR: {s:?}");
+    }
+
+    fn sample() -> Line {
+        Line::new()
+            .piece(Piece::glyphs(Crisp::Horizontal, 3).ink(Ink::BrightCyan).attr(Attr::Dim))
+            .gap(1)
+            .piece(Piece::text("mado").ink(Ink::Blue).on(Ink::Black).attr(Attr::Bold))
+    }
+
+    #[test]
+    fn the_capability_floor_is_the_plain_projection() {
+        let l = sample();
+        assert_eq!(l.render_at(&Capability::plain()), l.plain());
+    }
+
+    #[test]
+    fn every_coloured_rung_emits_the_ansi_slot_not_a_literal() {
+        let l = sample();
+        for level in ColorLevel::ALL.into_iter().filter(|l| l.is_colored()) {
+            let s = l.render_at(&Capability::fixed(level, 80, true));
+            assert_eq!(s, l.render(), "{level:?} changed the bytes");
+            assert!(!s.contains("38;2;") && !s.contains("38;5;"), "{level:?} pinned a literal: {s:?}");
+        }
+    }
+
+    #[test]
+    fn a_piece_with_only_a_default_background_emits_nothing() {
+        let s = Line::new().piece(Piece::text("x").on(Ink::Default)).render();
+        assert_eq!(s, "x");
+    }
+
+    #[test]
+    fn a_slot_renders_byte_for_byte_as_kazari_paints_it() {
+        let caps = Capability::fixed(ColorLevel::Ansi16, 80, true);
+        for role in crate::ink::tests::every_role() {
+            for (bold, dim) in [(false, false), (true, false), (false, true)] {
+                let slot = Theme::default().color(role).to_ansi16();
+                let mut piece = Piece::text("kazari").ink(crate::ink::tests::from_ansi(slot));
+                if bold {
+                    piece = piece.attr(Attr::Bold);
+                }
+                if dim {
+                    piece = piece.attr(Attr::Dim);
+                }
+                let ours = Line::new().piece(piece).render();
+                let theirs = StyleAtom::resolve(role, Theme::default(), &caps, bold, dim).paint("kazari");
+                assert_eq!(ours, theirs, "{role:?} bold={bold} dim={dim} diverged from kazari");
+            }
+        }
     }
 }
